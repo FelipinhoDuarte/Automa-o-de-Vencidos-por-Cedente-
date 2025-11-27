@@ -27,8 +27,8 @@ def data_d_menos_1():
 cedentes_email = [
     {
     "nome": "Multiplus",
-    "codigo_pessoa":412,
-    "email" :"pedro.rogel@articocapital.com.br" 
+    "codigo_pessoa":[412, 18060, 18061, 18062, 18063],
+    "email" :["pedro.rogel@articocapital.com.br" ]
     },
     {
     "nome": "Tx platico",
@@ -140,6 +140,11 @@ cedentes_email = [
     "codigo_pessoa":3798,
     "email" :"pedro.rogel@articocapital.com.br" #["agatha.noriller@nutriplant.com.br"," contasareceber@nutriplant.com.br", "leticia.zanele@nutriplant.com.br", "contasapagar@nutriplant.com.br"]
     },
+    {
+        "nome": "Luz Lar",
+        "codigo_pessoa": 5064,
+        "email" :"pedro.rogel@articocapital.com.br"
+    }
     ]
 
 # Cache para evitar requisições repetidas
@@ -246,17 +251,25 @@ def processar_titulo_paralelo(titulo):
 
 def carregar_dados_odata(codigo_cedente):
     """Versão otimizada com processamento paralelo"""
+    if isinstance(codigo_cedente, list):
+        filtros_cedente = []
+        for i in codigo_cedente:
+            filtros_cedente.append(f"PessoaCedente/CODIGO_PESSOA eq {i}")
+        filtro_cedente = f'({' or '.join(filtros_cedente)})'
+    else:
+        filtro_cedente = f'PessoaCedente/CODIGO_PESSOA eq {codigo_cedente}'
+        
     filters = [
         "CODIGO_EMPRESA eq 1",
         "CODIGO_SITUACAO_TITULO eq 1", 
         "TIPO_COBRANCA ne 2",
         "TIPO_COBRANCA ne 9",
         "VALOR_ABERTO gt 0",
-        f"PessoaCedente/CODIGO_PESSOA eq {codigo_cedente}",
+        filtro_cedente, 
         "CODIGO_ESTAGIO_TITULO eq 6",
         f"DATA_VENCIMENTO_REAL le {data_d_menos_1()}",
     ]
-    
+        
     filter_query = " and ".join(filters)
     
     select_columns = [
@@ -274,6 +287,7 @@ def carregar_dados_odata(codigo_cedente):
     select_query = ",".join(select_columns)
     
     url = f"{base_url}/titulo?$select={select_query}&$filter={filter_query}&$expand=PessoaCedente($select=CODIGO_PESSOA,NOME_PESSOA,EMAIL_PESSOA),PessoaSacado($select=CODIGO_PESSOA,NOME_PESSOA),Rotulo($select=CODIGO_ROTULO;$expand=RotuloGrupo($select=CODIGO_GRUPO_ROTULO,DESCRICAO))"
+    print(url)
 
     try:
         response = requests.get(url, headers=auth, timeout=30)
@@ -479,7 +493,7 @@ import requests
 import json
 from msal import ConfidentialClientApplication
 
-def registrar_e_enviar_email(dados, nome_cedente):
+def registrar_e_enviar_email(dados, nome_cedente, email_cedente):
     tenant_id =  os.getenv('TENANT_ID')  
     client_id = os.getenv('CLIENT_ID')  
     client_secret = os.getenv('CLIENT_SECRET')  # Certificates & secrets
@@ -503,12 +517,35 @@ def registrar_e_enviar_email(dados, nome_cedente):
         print("✅ Token obtido com sucesso!")
         
         # Enviar email
-        url = "https://graph.microsoft.com/v1.0/users/felipe.duarte@articocapital.com.br/sendMail"
+        url = "https://graph.microsoft.com/v1.0/users/pedro.rogel@articocapital.com.br/sendMail"
         
         headers = {
             'Authorization': 'Bearer ' + access_token,
             'Content-Type': 'application/json'
         }
+        
+        to_recipients = []
+        
+        if isinstance(email_cedente, str):
+            to_recipients.append({
+                "emailAddress": {
+                    "address": email_cedente
+                }
+            })
+        elif isinstance(email_cedente, list):
+            for email in email_cedente:
+                to_recipients.append({
+                    "emailAddress": {
+                        "address": email
+                    }
+                })
+                
+        #emails padrao para copia        
+        # to_recipients.append({
+        #     "emailAddress":{
+        #         "address":"felipe.duarte@articocapital.com.br"
+        #     }
+        # })
         
         email_data = {
             "message": {
@@ -517,18 +554,7 @@ def registrar_e_enviar_email(dados, nome_cedente):
                     "contentType": "HTML",
                     "content": f"Prezados(as), bom dia! <br><br> Tudo bem? <br><br> Segue abaixo relatório de vencidos.<br><br> {gerar_html_tabela(dados)}"
                 },
-                "toRecipients": [
-                    {
-                        "emailAddress": {
-                            "address": "pedro.rogel@articocapital.com.br"
-                        }
-                    },
-                    {
-                        "emailAddress": {
-                            "address": "felipe.duarte@articocapital.com.br"
-                        }
-                    }
-                ]
+                "toRecipients": to_recipients
             },
             "saveToSentItems": "true"
         }
@@ -552,7 +578,7 @@ def mandar_email_cada_cedente():
             print(f"Sem titulos vencidos para a empresa {i['nome']}")
         else:
             salvar_html_local(gerar_html_tabela(dados))
-            registrar_e_enviar_email(dados, i['nome'])
+            registrar_e_enviar_email(dados, i['nome'],i['email'])
     
    
 
